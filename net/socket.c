@@ -78,6 +78,9 @@
 #include <linux/pseudo_fs.h>
 #include <linux/security.h>
 #include <linux/syscalls.h>
+/*
+  compat32 , compat64
+*/
 #include <linux/compat.h>
 #include <linux/kmod.h>
 #include <linux/audit.h>
@@ -711,6 +714,9 @@ static noinline void call_trace_sock_send_length(struct sock *sk, int ret,
 
 static inline int sock_sendmsg_nosec(struct socket *sock, struct msghdr *msg)
 {
+	/*
+	  socket->ops call sendmsg by af_inet.c
+	*/
 	int ret = INDIRECT_CALL_INET(READ_ONCE(sock->ops)->sendmsg, inet6_sendmsg,
 				     inet_sendmsg, sock, msg,
 				     msg_data_left(msg));
@@ -1585,7 +1591,9 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 
 	/* Now protected by module ref count */
 	rcu_read_unlock();
-
+    /*
+	  create by ipv6
+	*/
 	err = pf->create(net, sock, protocol, kern);
 	if (err < 0) {
 		/* ->create should release the allocated sock->sk object on error
@@ -2197,7 +2205,9 @@ int __sys_sendto(int fd, void __user *buff, size_t len, unsigned int flags,
 	struct sockaddr_storage address;
 	int err;
 	struct msghdr msg;
-
+    /*
+	  user buffer convert to linux kernel buffer
+	*/
 	err = import_ubuf(ITER_SOURCE, buff, len, &msg.msg_iter);
 	if (unlikely(err))
 		return err;
@@ -2215,6 +2225,9 @@ int __sys_sendto(int fd, void __user *buff, size_t len, unsigned int flags,
 	msg.msg_namelen = 0;
 	msg.msg_ubuf = NULL;
 	if (addr) {
+		/*
+			user space addreess convert to linux kernel address
+		*/
 		err = move_addr_to_kernel(addr, addr_len, &address);
 		if (err < 0)
 			return err;
