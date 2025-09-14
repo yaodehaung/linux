@@ -3,6 +3,23 @@
 #include <kunit/test.h>
 #include <linux/rtc.h>
 
+static void rtc_roundtrip_test(struct kunit *test)
+{
+	struct rtc_time tm1, tm2;
+	time64_t t = 1609459200; /* 2021-01-01 00:00:00 UTC */
+	time64_t t2;
+
+	rtc_time64_to_tm(t, &tm1);
+	t2 = rtc_tm_to_time64(&tm1);
+	rtc_time64_to_tm(t2, &tm2);
+
+	KUNIT_EXPECT_EQ(test, t, t2);
+	KUNIT_EXPECT_EQ(test, tm1.tm_year, tm2.tm_year);
+	KUNIT_EXPECT_EQ(test, tm1.tm_mon, tm2.tm_mon);
+	KUNIT_EXPECT_EQ(test, tm1.tm_mday, tm2.tm_mday);
+}
+
+
 /*
  * Advance a date by one day.
  */
@@ -91,6 +108,7 @@ static void rtc_time64_to_tm_test_date_range_1000(struct kunit *test)
 
 static struct kunit_case rtc_lib_test_cases[] = {
 	KUNIT_CASE(rtc_time64_to_tm_test_date_range_1000),
+        KUNIT_CASE(rtc_roundtrip_test),
 	KUNIT_CASE_SLOW(rtc_time64_to_tm_test_date_range_160000),
 	{}
 };
