@@ -240,8 +240,8 @@ struct ucred {
 #define AF_MCTP		45	/* Management component
 				 * transport protocol
 				 */
-
-#define AF_MAX		46	/* For now.. */
+#define AF_MYPROTO      46
+#define AF_MAX		48	/* For now.. */
 
 /* Protocol families, same as address families. */
 #define PF_UNSPEC	AF_UNSPEC
@@ -292,6 +292,8 @@ struct ucred {
 #define PF_SMC		AF_SMC
 #define PF_XDP		AF_XDP
 #define PF_MCTP		AF_MCTP
+
+#define PF_MYPROTO     AF_MYPROTO 
 #define PF_MAX		AF_MAX
 
 /* Maximum queue length specifiable by listen.  */

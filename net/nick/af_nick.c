@@ -1,121 +1,122 @@
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/net.h>
-#include <linux/socket.h>
-#include <linux/skbuff.h>
+#include <linux/bpf-cgroup.h>
 #include <linux/uaccess.h>
+#include <asm/ioctls.h>
+#include <linux/memblock.h>
+#include <linux/highmem.h>
+#include <linux/types.h>
+#include <linux/fcntl.h>
+#include <linux/module.h>
+#include <linux/socket.h>
+#include <linux/sockios.h>
+#include <linux/igmp.h>
+#include <linux/inetdevice.h>
+#include <linux/in.h>
+#include <linux/errno.h>
+#include <linux/timer.h>
+#include <linux/mm.h>
+#include <linux/inet.h>
+#include <linux/netdevice.h>
 #include <linux/slab.h>
+#include <linux/sock_diag.h>
+#include <net/tcp_states.h>
+#include <linux/skbuff.h>
+#include <linux/proc_fs.h>
+#include <linux/seq_file.h>
+#include <net/net_namespace.h>
+#include <net/icmp.h>
+#include <net/inet_hashtables.h>
+#include <net/ip.h>
+#include <net/ip_tunnels.h>
+#include <net/route.h>
+#include <net/checksum.h>
+#include <net/gso.h>
+#include <net/xfrm.h>
+#include <trace/events/udp.h>
+#include <linux/static_key.h>
 
-#define AF_MYPROTO 31   // 選擇一個未使用的 AF
 
-/* 自訂 socket 內部資料 */
-struct my_sock {
-    struct sock sk;
-    char buffer[256];
-    size_t len;
-};
+#define AF_MYPROTO 46   // 自訂 protocol number
+struct proto;  // 前向宣告 (incomplete type)
 
-/* sendmsg callback */
-static int my_sendmsg(struct socket *sock, struct msghdr *msg, size_t len)
+/* ---- 定義 proto_ops ---- */
+static int my_proto_connect(struct socket *sock, struct sockaddr *addr, int addr_len, int flags)
 {
-    struct my_sock *mysk = (struct my_sock *)sock->sk;
-    if (len > sizeof(mysk->buffer))
-        return -EINVAL;
-
-    if (copy_from_user(mysk->buffer, msg->msg_iov->iov_base, len))
-        return -EFAULT;
-
-    mysk->len = len;
-    pr_info("my_socket: sendmsg received %zu bytes\n", len);
-    return len;
-}
-
-/* recvmsg callback */
-static int my_recvmsg(struct socket *sock, struct msghdr *msg, size_t len,
-                      int flags)
-{
-    struct my_sock *mysk = (struct my_sock *)sock->sk;
-    size_t copy_len = mysk->len;
-
-    if (copy_len > len)
-        copy_len = len;
-
-    if (copy_to_user(msg->msg_iov->iov_base, mysk->buffer, copy_len))
-        return -EFAULT;
-
-    pr_info("my_socket: recvmsg sending %zu bytes\n", copy_len);
-    return copy_len;
-}
-
-/* release callback */
-static int my_release(struct socket *sock)
-{
-    struct sock *sk = sock->sk;
-    pr_info("my_socket: release socket\n");
-    if (sk)
-        sock_put(sk);
     return 0;
 }
 
-/* proto_ops 定義 */
+static int my_proto_release(struct socket *sock)
+{
+    return 0;
+}
+
 static const struct proto_ops my_proto_ops = {
     .family = AF_MYPROTO,
-    .owner = THIS_MODULE,
-    .release = my_release,
-    .sendmsg = my_sendmsg,
-    .recvmsg = my_recvmsg,
+    .connect = my_proto_connect,
+    .release = my_proto_release,
+    // 其他 callback 可以 NULL 或自訂
 };
 
-/* proto 定義 */
+/* ---- 定義 proto ---- */
 static struct proto my_proto = {
-    .name = "MY_PROTO",
+    .name = "MYPROTO",         // 必須是合法 kernel 字串
     .owner = THIS_MODULE,
+    .obj_size = sizeof(struct sock),
 };
 
-/* create callback */
-static int my_socket_create(struct net *net, struct socket *sock, int protocol, int kern)
+/* ---- 定義 net_proto_family ---- */
+static int my_family_create(struct net *net, struct socket *sock, int protocol, int kern)
 {
-    struct sock *sk;
-    sk = sk_alloc(net, AF_MYPROTO, GFP_KERNEL, &my_proto);
-    if (!sk)
+    sock->ops = &my_proto_ops;   // 指派 proto_ops
+    sock->sk = sk_alloc(net, AF_MYPROTO, GFP_KERNEL, &my_proto, kern);
+    if (!sock->sk)
         return -ENOMEM;
 
-    sock_init_data(sock, sk);
-    sock->ops = &my_proto_ops;
-
-    pr_info("my_socket: socket created\n");
+    printk(KERN_INFO "my_family_create called\n");
     return 0;
 }
 
-/* proto_family 定義 */
 static struct net_proto_family my_family = {
     .family = AF_MYPROTO,
-    .create = my_socket_create,
-    .owner = THIS_MODULE,
+    .create = my_family_create,
+    .owner  = THIS_MODULE,
 };
 
-/* module init / exit */
-static int __init my_socket_init(void)
+/* ---- module init / exit ---- */
+static int __init af_nick_init(void)
 {
     int ret;
+
+    printk(KERN_INFO "af_nick module init\n");
+
+    ret = proto_register(&my_proto, 1);  // 註冊 proto
+    if (ret < 0) {
+        printk(KERN_ERR "proto_register failed: %d\n", ret);
+        sock_unregister(AF_MYPROTO);
+        return ret;
+    }
+
     ret = sock_register(&my_family);
-    if (ret)
-        pr_err("my_socket: failed to register family\n");
-    else
-        pr_info("my_socket: module loaded\n");
-    return ret;
+    if (ret < 0) {
+        printk(KERN_ERR "sock_register failed: %d\n", ret);
+        return ret;
+    }
+
+
+    printk(KERN_INFO "af_nick module loaded successfully\n");
+    return 0;
 }
 
-static void __exit my_socket_exit(void)
+static void __exit af_nick_exit(void)
 {
+    proto_unregister(&my_proto);
     sock_unregister(AF_MYPROTO);
-    pr_info("my_socket: module unloaded\n");
+    printk(KERN_INFO "af_nick module unloaded\n");
 }
 
-module_init(my_socket_init);
-module_exit(my_socket_exit);
+module_init(af_nick_init);
+module_exit(af_nick_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Nick Huang");
-MODULE_DESCRIPTION("Example: custom kernel socket");
+MODULE_DESCRIPTION("AF_MYPROTO (46) example module");
 
