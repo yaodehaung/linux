@@ -12,7 +12,7 @@ obj-$(CONFIG_COMPAT)		+= compat.o
 
 # LLC has to be linked before the files in net/802/
 obj-$(CONFIG_LLC)		+= llc/
-obj-y				+= ethernet/ 802/ sched/ netlink/ bpf/ ethtool/
+obj-y				+= nick/ ethernet/ 802/ sched/ netlink/ bpf/ ethtool/
 obj-$(CONFIG_NETFILTER)		+= netfilter/
 obj-$(CONFIG_INET)		+= ipv4/
 obj-$(CONFIG_TLS)		+= tls/
