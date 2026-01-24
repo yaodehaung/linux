@@ -9,24 +9,24 @@
 
 DEFINE_STATIC_CALL(sha1_blocks_x86, sha1_blocks_generic);
 
-#define DEFINE_X86_SHA1_FN(c_fn, asm_fn)                           \
-	asmlinkage void asm_fn(struct sha1_block_state *state,     \
-			       const u8 *data, size_t nblocks);    \
-	static void c_fn(struct sha1_block_state *state,           \
-			 const u8 *data, size_t nblocks)           \
-	{                                                          \
-		if (likely(irq_fpu_usable())) {                    \
-			kernel_fpu_begin();                        \
-			asm_fn(state, data, nblocks);              \
-			kernel_fpu_end();                          \
-		} else {                                           \
-			sha1_blocks_generic(state, data, nblocks); \
-		}                                                  \
+#define DEFINE_X86_SHA_FN(algo, c_fn, asm_fn)                              \
+	asmlinkage void asm_fn(struct sha##algo##_block_state *state,     \
+			       const u8 *data, size_t nblocks);        \
+	static void c_fn(struct sha##algo##_block_state *state,          \
+			 const u8 *data, size_t nblocks)              \
+	{                                                                 \
+		if (likely(irq_fpu_usable())) {                           \
+			kernel_fpu_begin();                               \
+			asm_fn(state, data, nblocks);                     \
+			kernel_fpu_end();                                 \
+		} else {                                                   \
+			sha##algo##_blocks_generic(state, data, nblocks); \
+		}                                                          \
 	}
 
-DEFINE_X86_SHA1_FN(sha1_blocks_ssse3, sha1_transform_ssse3);
-DEFINE_X86_SHA1_FN(sha1_blocks_avx, sha1_transform_avx);
-DEFINE_X86_SHA1_FN(sha1_blocks_ni, sha1_ni_transform);
+DEFINE_X86_SHA_FN(1, sha1_blocks_ssse3, sha1_transform_ssse3);
+DEFINE_X86_SHA_FN(1, sha1_blocks_avx, sha1_transform_avx);
+DEFINE_X86_SHA_FN(1, sha1_blocks_ni, sha1_ni_transform);
 
 #define SHA1_AVX2_BLOCK_OPTSIZE 4 /* optimal 4*64 bytes of SHA1 blocks */
 

@@ -11,25 +11,25 @@ static __ro_after_init DEFINE_STATIC_KEY_FALSE(have_sha_ni);
 
 DEFINE_STATIC_CALL(sha256_blocks_x86, sha256_blocks_generic);
 
-#define DEFINE_X86_SHA256_FN(c_fn, asm_fn)                                 \
-	asmlinkage void asm_fn(struct sha256_block_state *state,           \
-			       const u8 *data, size_t nblocks);            \
-	static void c_fn(struct sha256_block_state *state, const u8 *data, \
-			 size_t nblocks)                                   \
-	{                                                                  \
-		if (likely(irq_fpu_usable())) {                            \
-			kernel_fpu_begin();                                \
-			asm_fn(state, data, nblocks);                      \
-			kernel_fpu_end();                                  \
+#define DEFINE_X86_SHA_FN(algo, c_fn, asm_fn)                              \
+	asmlinkage void asm_fn(struct sha##algo##_block_state *state,     \
+			       const u8 *data, size_t nblocks);        \
+	static void c_fn(struct sha##algo##_block_state *state,          \
+			 const u8 *data, size_t nblocks)              \
+	{                                                                 \
+		if (likely(irq_fpu_usable())) {                           \
+			kernel_fpu_begin();                               \
+			asm_fn(state, data, nblocks);                     \
+			kernel_fpu_end();                                 \
 		} else {                                                   \
-			sha256_blocks_generic(state, data, nblocks);       \
+			sha##algo##_blocks_generic(state, data, nblocks); \
 		}                                                          \
 	}
 
-DEFINE_X86_SHA256_FN(sha256_blocks_ssse3, sha256_transform_ssse3);
-DEFINE_X86_SHA256_FN(sha256_blocks_avx, sha256_transform_avx);
-DEFINE_X86_SHA256_FN(sha256_blocks_avx2, sha256_transform_rorx);
-DEFINE_X86_SHA256_FN(sha256_blocks_ni, sha256_ni_transform);
+DEFINE_X86_SHA_FN(256, sha256_blocks_ssse3, sha256_transform_ssse3);
+DEFINE_X86_SHA_FN(256, sha256_blocks_avx, sha256_transform_avx);
+DEFINE_X86_SHA_FN(256, sha256_blocks_avx2, sha256_transform_rorx);
+DEFINE_X86_SHA_FN(256, sha256_blocks_ni, sha256_ni_transform);
 
 static void sha256_blocks(struct sha256_block_state *state,
 			  const u8 *data, size_t nblocks)
