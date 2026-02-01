@@ -604,6 +604,16 @@ config ACPI_PRMT
 	  substantially increase computational overhead related to the
 	  initialization of some server systems.
 
+config ACPI_NSREPAIR2_KUNIT_TEST
+	tristate "KUnit tests for ACPI nsrepair2" if !KUNIT_ALL_TESTS
+	depends on ACPI && KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for the ACPI predefined method
+	  repair functions in nsrepair2.c.
+
+	  If unsure, say N.
+
 endif	# ACPI
 
 config X86_PM_TIMER

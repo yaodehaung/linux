@@ -211,3 +211,5 @@ acpi-$(ACPI_FUTURE_USAGE) +=	\
 	uttrack.o		\
 	utuuid.o
 
+obj-$(CONFIG_ACPI_NSREPAIR2_KUNIT_TEST) += nsrepair2_test.o
+
