@@ -1,0 +1,1 @@
+qemu-system-x86_64   -enable-kvm   -kernel arch/x86/boot/bzImage   -initrd initramfs.cpio.gz   -append "console=ttyS0 earlyprintk=serial rdinit=/init"   -nographic   -virtfs local,path=/home/nickhuang/test_apps,mount_tag=shared_dir,security_model=none,id=shared_dir
