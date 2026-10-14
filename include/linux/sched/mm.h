@@ -12,6 +12,10 @@
 
 /*
  * Routines for handling mm_structs
+ *
+ * mm_alloc is used to allocate a new mm_struct.  
+ *
+ * mm_alloc is implemented from kernel/fork.c
  */
 extern struct mm_struct *mm_alloc(void);
 
