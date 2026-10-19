@@ -3232,8 +3232,17 @@ static void reset_ctrl_pos(struct lruvec *lruvec, int type, bool carryover)
 		if (carryover) {
 			unsigned long sum;
 
+			/*
+			* Calculate the sum of the historical average refault count and
+			* the current refault count for the specified page type and tier.
+			* This sum is used to update the exponential moving average (EMA).
+			*/
 			sum = lrugen->avg_refaulted[type][tier] +
 			      atomic_long_read(&lrugen->refaulted[hist][type][tier]);
+			/*
+			* Update the EMA of refault counts by combining historical
+			* and current statistics with equal weights (0.5).
+			*/
 			WRITE_ONCE(lrugen->avg_refaulted[type][tier], sum / 2);
 
 			sum = lrugen->avg_total[type][tier] +
@@ -6765,7 +6774,18 @@ static bool throttle_direct_reclaim(gfp_t gfp_mask, struct zonelist *zonelist,
 out:
 	return false;
 }
-
+/**
+ * try_to_free_pages - Try to free pages from the given zonelist
+ * @zonelist: The zonelist to scan
+ * @order: The order of the allocation
+ * @gfp_mask: The gfp mask for the allocation
+ * @nodemask: The nodemask for the allocation
+ *
+ * This function attempts to free pages from the given zonelist. It will
+ * throttle direct reclaimers if necessary.
+ *
+ * Returns the number of pages freed.
+ */
 unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 				gfp_t gfp_mask, const nodemask_t *nodemask)
 {
@@ -6901,7 +6921,7 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 {
 	return 0;
 }
-#endif
+#endif /* !CONFIG_MEMCG*/
 
 static void kswapd_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 {
@@ -7674,6 +7694,8 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 
 	set_task_reclaim_state(current, NULL);
 	memalloc_noreclaim_restore(noreclaim_flag);
+
+	/* fs_reclaim_release  is define from page_alloc*/
 	fs_reclaim_release(sc.gfp_mask);
 
 	return nr_reclaimed;
@@ -7746,14 +7768,25 @@ static const struct ctl_table vmscan_sysctl_table[] = {
 static int __init kswapd_init(void)
 {
 	int nid;
+	/*
+		Using in linux/include/linux/nodemask.h
 
+		N_MEMORY: The number of memory nodes in the system.
+		This constant is used to define the size of arrays and data structures that are indexed by node IDs.
+		It represents the maximum number of memory nodes that can be present in the system.
+
+		The N_MEMORY insert from linux/mm/mm_init.c is used to iterate over all memory nodes in the system and perform initialization tasks for each node. The for_each_node_state macro is used to loop through all nodes that have memory (N_MEMORY) and call the kswapd_run function for each node. 
+	*/
 	for_each_node_state(nid, N_MEMORY)
  		kswapd_run(nid);
 	register_sysctl_init("vm", vmscan_sysctl_table);
 	return 0;
 }
 
-module_init(kswapd_init)
+// module_init(kswapd_init)
+
+
+
 
 #ifdef CONFIG_NUMA
 /*
