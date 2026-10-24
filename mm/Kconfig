@@ -1511,6 +1511,17 @@ config LAZY_MMU_MODE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config LRU_GEN_PID_KUNIT_TEST
+	bool "KUnit tests for the multi-gen LRU PID controller" if !KUNIT_ALL_TESTS
+	depends on LRU_GEN && KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  Enable this option to check that the D term of the multi-gen LRU PID
+	  controller (vm.lru_gen_pid_halflife_ms) discounts the I term over
+	  time, so that long-lived generations can resist stale information.
+
+	  If unsure, say N.
+
 source "mm/damon/Kconfig"
 
 endmenu

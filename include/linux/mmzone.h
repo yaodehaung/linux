@@ -1598,6 +1598,8 @@ typedef struct pglist_data {
 	struct lru_gen_mm_walk mm_walk;
 	/* lru_gen_folio list */
 	struct lru_gen_memcg memcg_lru;
+	/* half-life of the I term of the PID controller, 0 disables it */
+	int lru_gen_pid_halflife_ms;
 #endif
 
 	CACHELINE_PADDING(_pad2_);

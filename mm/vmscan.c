@@ -3176,7 +3176,9 @@ static bool iterate_mm_list_nowalk(struct lruvec *lruvec, unsigned long seq)
  * The P term is refaulted/(evicted+protected) from a tier in the generation
  * currently being evicted; the I term is the exponential moving average of the
  * P term over the generations previously evicted, using the smoothing factor
- * 1/2; the D term isn't supported.
+ * 1/2; the D term discounts the I term by the age of the generation currently
+ * being evicted, halving it every lru_gen_pid_halflife_ms of the node (0
+ * disables it), i.e., /sys/devices/system/node/nodeN/lru_gen_pid_halflife_ms.
  *
  * The setpoint (SP) is always the first tier of one type; the process variable
  * (PV) is either any tier of the other type or any other tier of the same
@@ -3185,9 +3187,11 @@ static bool iterate_mm_list_nowalk(struct lruvec *lruvec, unsigned long seq)
  * The error is the difference between the SP and the PV; the correction is to
  * turn off protection when SP>PV or turn on protection when SP<PV.
  *
- * For future optimizations:
- * 1. The D term may discount the other two terms over time so that long-lived
- *    generations can resist stale information.
+ * The I term is only updated when a generation is fully evicted, so the longer
+ * the oldest generation lives, the staler the I term is. Discounting it over
+ * time lets the P term take over, so that long-lived generations can resist
+ * stale information. Discounting the P term too would not change the ratio
+ * between refaulted and total, only the confidence in it.
  */
 struct ctrl_pos {
 	unsigned long refaulted;
@@ -3195,20 +3199,48 @@ struct ctrl_pos {
 	int gain;
 };
 
+/* val * 2^(-age/halflife), linearly interpolated between halvings */
+static unsigned long ctrl_discount(unsigned long val, unsigned int age_ms,
+				   unsigned int halflife_ms)
+{
+	unsigned int shift, frac;
+
+	if (!halflife_ms)
+		return val;
+
+	shift = age_ms / halflife_ms;
+	if (shift >= BITS_PER_LONG)
+		return 0;
+
+	val >>= shift;
+	frac = age_ms % halflife_ms;
+
+	return val - mult_frac(val, frac, 2 * halflife_ms);
+}
+
 static void read_ctrl_pos(struct lruvec *lruvec, int type, int tier, int gain,
 			  struct ctrl_pos *pos)
 {
 	int i;
 	struct lru_gen_folio *lrugen = &lruvec->lrugen;
 	int hist = lru_hist_from_seq(lrugen->min_seq[type]);
+	int gen = lru_gen_from_seq(lrugen->min_seq[type]);
+	unsigned int halflife_ms = READ_ONCE(lruvec_pgdat(lruvec)->lru_gen_pid_halflife_ms);
+	unsigned long birth = READ_ONCE(lrugen->timestamps[gen]);
+	unsigned int age_ms = 0;
+
+	if (halflife_ms && time_after(jiffies, birth))
+		age_ms = jiffies_to_msecs(jiffies - birth);
 
 	pos->gain = gain;
 	pos->refaulted = pos->total = 0;
 
 	for (i = tier % MAX_NR_TIERS; i <= min(tier, MAX_NR_TIERS - 1); i++) {
-		pos->refaulted += lrugen->avg_refaulted[type][i] +
+		pos->refaulted += ctrl_discount(lrugen->avg_refaulted[type][i],
+						age_ms, halflife_ms) +
 				  atomic_long_read(&lrugen->refaulted[hist][type][i]);
-		pos->total += lrugen->avg_total[type][i] +
+		pos->total += ctrl_discount(lrugen->avg_total[type][i],
+					    age_ms, halflife_ms) +
 			      lrugen->protected[hist][type][i] +
 			      atomic_long_read(&lrugen->evicted[hist][type][i]);
 	}
@@ -8152,13 +8184,51 @@ static ssize_t reclaim_store(struct device *dev,
 }
 
 static DEVICE_ATTR_WO(reclaim);
+
+#ifdef CONFIG_LRU_GEN
+static ssize_t lru_gen_pid_halflife_ms_show(struct device *dev,
+					    struct device_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%d\n", READ_ONCE(NODE_DATA(dev->id)->lru_gen_pid_halflife_ms));
+}
+
+static ssize_t lru_gen_pid_halflife_ms_store(struct device *dev,
+					     struct device_attribute *attr,
+					     const char *buf, size_t count)
+{
+	int ret, val;
+
+	ret = kstrtoint(buf, 0, &val);
+	if (ret)
+		return ret;
+	if (val < 0)
+		return -EINVAL;
+
+	WRITE_ONCE(NODE_DATA(dev->id)->lru_gen_pid_halflife_ms, val);
+	return count;
+}
+
+static DEVICE_ATTR_RW(lru_gen_pid_halflife_ms);
+#endif
+
 int reclaim_register_node(struct node *node)
 {
+#ifdef CONFIG_LRU_GEN
+	int ret = device_create_file(&node->dev, &dev_attr_lru_gen_pid_halflife_ms);
+
+	if (ret)
+		return ret;
+#endif
 	return device_create_file(&node->dev, &dev_attr_reclaim);
 }
 
 void reclaim_unregister_node(struct node *node)
 {
+#ifdef CONFIG_LRU_GEN
+	device_remove_file(&node->dev, &dev_attr_lru_gen_pid_halflife_ms);
+#endif
 	return device_remove_file(&node->dev, &dev_attr_reclaim);
 }
 #endif
+
+#include "tests/vmscan_pid_kunit.c"
